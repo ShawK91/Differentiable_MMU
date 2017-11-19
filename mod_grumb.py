@@ -10,8 +10,6 @@ from copy import deepcopy
 import torch.nn.functional as F
 from scipy.special import expit
 
-#TODO Bias or no bias?
-
 class Fast_GRUMB:
     def __init__(self, num_input, num_hnodes, num_output, output_activation, mean = 0, std = 1):
         self.arch_type = 'Fast_GRUMB'
@@ -334,9 +332,33 @@ class PT_GRUMB(nn.Module):
         self.fast_net = Fast_GRUMB(input_size, memory_size, output_size, output_activation)
 
 
-        #Mean and std
-        mean = 0; std_input = 1.0/(math.sqrt(input_size)); std_hnodes = 1.0/(math.sqrt(self.memory_size))
-        std_mem = 1.0/(math.sqrt(self.memory_size)); std_output = 1.0/(math.sqrt(self.output_size))
+        # #Mean and std
+        # mean = 0; std_input = 1.0/(math.sqrt(input_size)); std_hnodes = 1.0/(math.sqrt(self.memory_size))
+        # std_mem = 1.0/(math.sqrt(self.memory_size)); std_output = 1.0/(math.sqrt(self.output_size))
+        #
+        # # Input gate
+        # self.w_inpgate = Parameter(torch.normal(mean, std_mem, (memory_size, input_size)), requires_grad=1)
+        # self.w_rec_inpgate = Parameter(torch.normal(mean, std_mem, (memory_size, output_size)), requires_grad=1)
+        # self.w_mem_inpgate = Parameter(torch.normal(mean, std_mem, (memory_size, memory_size)), requires_grad=1)
+        #
+        # # Block Input
+        # self.w_inp = Parameter(torch.normal(mean, std_mem, (memory_size, input_size)), requires_grad=1)
+        # self.w_rec_inp = Parameter(torch.nromal(mean, std_mem, (memory_size, output_size)), requires_grad=1)
+        #
+        # # Read Gate
+        # self.w_readgate = Parameter(torch.normal(mean, std_mem, (memory_size, input_size)), requires_grad=1)
+        # self.w_rec_readgate = Parameter(torch.normal(mean, std_mem, (memory_size, output_size), requires_grad=1)
+        # self.w_mem_readgate = Parameter(torch.normal(mean, std_mem, (memory_size, memory_size)), requires_grad=1)
+        #
+        # # Write Gate
+        # self.w_writegate = Parameter(torch.normal(mean, std_mem, (memory_size, input_size)), requires_grad=1)
+        # self.w_rec_writegate = Parameter(torch.normal(mean, std_mem, (memory_size, output_size)), requires_grad=1)
+        # self.w_mem_writegate = Parameter(torch.normal(mena, std_mem, (memory_size, memory_size)), requires_grad=1)
+        #
+        # # Output weights
+        # self.w_hid_out = Parameter(torch.normal(mean, std_output, (output_size, memory_size)), requires_grad=1)
+
+
 
         #Input gate
         self.w_inpgate = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
@@ -367,13 +389,13 @@ class PT_GRUMB(nn.Module):
         self.w_writegate_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
 
         # Adaptive components
-        self.mem = Variable(torch.zeros(self.memory_size, 1), requires_grad=1).cuda()
-        self.out = Variable(torch.zeros(self.output_size, 1), requires_grad=1).cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, 1), requires_grad=1).double().cuda()
+        self.out = Variable(torch.zeros(self.output_size, 1), requires_grad=1).double().cuda()
 
     def reset(self, batch_size):
         # Adaptive components
-        self.mem = Variable(torch.zeros(self.memory_size, batch_size), requires_grad=1).cuda()
-        self.out = Variable(torch.zeros(self.output_size, batch_size), requires_grad=1).cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, batch_size), requires_grad=1).double().cuda()
+        self.out = Variable(torch.zeros(self.output_size, batch_size), requires_grad=1).double().cuda()
 
     # Some bias
     def graph_compute(self, input, rec_output, mem):
@@ -397,7 +419,7 @@ class PT_GRUMB(nn.Module):
 
 
     def forward(self, input):
-        x = Variable(torch.Tensor(input).cuda(), requires_grad=True); x = x.unsqueeze(0)
+        x = Variable(torch.Tensor(input).double().cuda(), requires_grad=True); x = x.unsqueeze(0)
         self.out, self.mem = self.graph_compute(x, self.out, self.mem)
         return self.out
 

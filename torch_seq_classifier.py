@@ -42,7 +42,7 @@ class Tracker(): #Tracker
 class SSNE_param:
     def __init__(self):
         self.num_input = 1
-        self.num_hnodes = 5
+        self.num_hnodes = 10
         self.num_output = 1
 
         self.elite_fraction = 0.1
@@ -57,8 +57,8 @@ class Parameters:
     def __init__(self):
             #BackProp
             self.bprop_max_gens = 500
-            self.batch_size = 1000
-            self.bprop_train_examples = 5000
+            self.batch_size = 500
+            self.bprop_train_examples = 500
             self.skip_bprop = False
             self.load_seed = False #Loads a seed population from the save_foldername
                                    # IF FALSE: Runs Backpropagation, saves it and uses that
@@ -74,11 +74,11 @@ class Parameters:
                                #3 LSTM
 
             #Task Params
-            self.depth_train = 5
+            self.depth_train = 6
             self.depth_test = self.depth_train
             self.num_train_examples = 10
             self.num_test_examples = 100
-            self.corridors = [1, 3]
+            self.corridors = [10, 20]
 
             self.is_dynamic = False  # Makes the task depth dynamic
             self.dynamic_limit = 50
@@ -178,7 +178,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         #criterion = torch.nn.KLDivLoss()
         #criterion = torch.nn.MSELoss()
         #criterion = torch.nn.BCELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum = 0.1, nesterov = True)
 
         all_train_x, all_train_y = self.test_sequence_data(self.parameters.bprop_train_examples, self.parameters.depth_train)
@@ -194,6 +194,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
         test_x = all_train_x[:]; test_y = all_train_y[:]
         seq_len = len(all_train_x[0])
+        model.double()
         model.cuda()
         for epoch in range(1, self.parameters.bprop_max_gens+1):
 
@@ -204,7 +205,6 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
 
             epoch_loss = 0.0
-
             for batch_id in range(int(self.parameters.bprop_train_examples/self.parameters.batch_size)): #Each batch
                 start_ind = self.parameters.batch_size * batch_id; end_ind = start_ind + self.parameters.batch_size
                 train_x = np.array(all_train_x[start_ind:end_ind])
@@ -213,7 +213,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
                     net_out = model.forward(train_x[:,i])
-                    target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
+                    target_T = Variable(torch.Tensor(train_y[:,i]).double().cuda()); target_T = target_T.unsqueeze(0)
                     loss = criterion(net_out, target_T)
                     loss.backward(retain_variables=True)
                     epoch_loss += loss.cpu().data.numpy()[0]
