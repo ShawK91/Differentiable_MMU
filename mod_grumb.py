@@ -333,6 +333,11 @@ class PT_GRUMB(nn.Module):
         else: self.output_activation = None
         self.fast_net = Fast_GRUMB(input_size, memory_size, output_size, output_activation)
 
+
+        #Mean and std
+        mean = 0; std_input = 1.0/(math.sqrt(input_size)); std_hnodes = 1.0/(math.sqrt(self.memory_size))
+        std_mem = 1.0/(math.sqrt(self.memory_size)); std_output = 1.0/(math.sqrt(self.output_size))
+
         #Input gate
         self.w_inpgate = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
         self.w_rec_inpgate = Parameter(torch.rand( memory_size, output_size), requires_grad=1)

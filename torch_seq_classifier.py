@@ -57,7 +57,7 @@ class Parameters:
     def __init__(self):
             #BackProp
             self.bprop_max_gens = 500
-            self.batch_size = 100
+            self.batch_size = 1000
             self.bprop_train_examples = 5000
             self.skip_bprop = False
             self.load_seed = False #Loads a seed population from the save_foldername
@@ -78,7 +78,7 @@ class Parameters:
             self.depth_test = self.depth_train
             self.num_train_examples = 10
             self.num_test_examples = 100
-            self.corridors = [3, 3]
+            self.corridors = [1, 3]
 
             self.is_dynamic = False  # Makes the task depth dynamic
             self.dynamic_limit = 50
@@ -182,6 +182,16 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum = 0.1, nesterov = True)
 
         all_train_x, all_train_y = self.test_sequence_data(self.parameters.bprop_train_examples, self.parameters.depth_train)
+
+        #Pad train_data
+        all_len = [len(train_x) for train_x in all_train_x]
+        max_len = max(all_len)
+        for i in range(len(all_train_x)):
+            while len(all_train_x[i]) < max_len:
+                all_train_x[i].append(0)
+                all_train_y[i].append(all_train_y[i][-1])
+
+
         test_x = all_train_x[:]; test_y = all_train_y[:]
         seq_len = len(all_train_x[0])
         model.cuda()
