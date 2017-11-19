@@ -57,8 +57,8 @@ class Parameters:
     def __init__(self):
             #BackProp
             self.bprop_max_gens = 500
-            self.batch_size = 500
-            self.bprop_train_examples = 500
+            self.batch_size = 50000
+            self.bprop_train_examples = 50000
             self.skip_bprop = False
             self.load_seed = False #Loads a seed population from the save_foldername
                                    # IF FALSE: Runs Backpropagation, saves it and uses that
@@ -194,7 +194,6 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
         test_x = all_train_x[:]; test_y = all_train_y[:]
         seq_len = len(all_train_x[0])
-        model.double()
         model.cuda()
         for epoch in range(1, self.parameters.bprop_max_gens+1):
 
@@ -213,7 +212,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
                     net_out = model.forward(train_x[:,i])
-                    target_T = Variable(torch.Tensor(train_y[:,i]).double().cuda()); target_T = target_T.unsqueeze(0)
+                    target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
                     loss = criterion(net_out, target_T)
                     loss.backward(retain_variables=True)
                     epoch_loss += loss.cpu().data.numpy()[0]

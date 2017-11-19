@@ -389,13 +389,13 @@ class PT_GRUMB(nn.Module):
         self.w_writegate_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
 
         # Adaptive components
-        self.mem = Variable(torch.zeros(self.memory_size, 1), requires_grad=1).double().cuda()
-        self.out = Variable(torch.zeros(self.output_size, 1), requires_grad=1).double().cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, 1), requires_grad=1).cuda()
+        self.out = Variable(torch.zeros(self.output_size, 1), requires_grad=1).cuda()
 
     def reset(self, batch_size):
         # Adaptive components
-        self.mem = Variable(torch.zeros(self.memory_size, batch_size), requires_grad=1).double().cuda()
-        self.out = Variable(torch.zeros(self.output_size, batch_size), requires_grad=1).double().cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, batch_size), requires_grad=1).cuda()
+        self.out = Variable(torch.zeros(self.output_size, batch_size), requires_grad=1).cuda()
 
     # Some bias
     def graph_compute(self, input, rec_output, mem):
@@ -419,7 +419,7 @@ class PT_GRUMB(nn.Module):
 
 
     def forward(self, input):
-        x = Variable(torch.Tensor(input).double().cuda(), requires_grad=True); x = x.unsqueeze(0)
+        x = Variable(torch.Tensor(input).cuda(), requires_grad=True); x = x.unsqueeze(0)
         self.out, self.mem = self.graph_compute(x, self.out, self.mem)
         return self.out
 
