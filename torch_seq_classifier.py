@@ -144,8 +144,6 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
             net.turn_grad_off()
 
 
-
-
     def bprop_simulation(self, individual, data_x, data_y, reward_scheme):
         reward = 0.0
 
@@ -205,11 +203,10 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
                     net_out = model.forward(train_x[:,i])
-                    if train_y[0,i] != 0: #If relevant
-                        target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
-                        loss = criterion(net_out, target_T)
-                        loss.backward(retain_variables=True)
-                        epoch_loss += loss.cpu().data.numpy()[0]
+                    target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
+                    loss = criterion(net_out, target_T)
+                    loss.backward(retain_variables=True)
+                    epoch_loss += loss.cpu().data.numpy()[0]
 
             optimizer.step() #Perform the gradient updates to weights for the entire set of collected gradients
             optimizer.zero_grad()
@@ -324,7 +321,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 #Encdoe the noise (0's)
                 num_noise = randint(self.parameters.corridors[0], self.parameters.corridors[1])
                 for i in range(num_noise):
-                    x.append(0); y.append(0)
+                    x.append(0); y.append(y[-1])
             train_x.append(x); train_y.append(y)
         return train_x, train_y
 
