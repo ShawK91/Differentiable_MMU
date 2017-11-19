@@ -42,7 +42,7 @@ class Tracker(): #Tracker
 class SSNE_param:
     def __init__(self):
         self.num_input = 1
-        self.num_hnodes = 20
+        self.num_hnodes = 5
         self.num_output = 1
 
         self.elite_fraction = 0.1
@@ -56,15 +56,16 @@ class SSNE_param:
 class Parameters:
     def __init__(self):
             #BackProp
-            self.bprop_max_gens = 10
-            self.bprop_train_examples = 1000
+            self.bprop_max_gens = 500
+            self.batch_size = 100
+            self.bprop_train_examples = 5000
             self.skip_bprop = False
             self.load_seed = False #Loads a seed population from the save_foldername
                                    # IF FALSE: Runs Backpropagation, saves it and uses that
             self.is_random = False
 
             #SSNE stuff
-            self.population_size = 1000
+            self.population_size = 100
             self.ssne_param = SSNE_param()
             self.total_gens = 100
             #Determine the nerual archiecture
@@ -73,11 +74,11 @@ class Parameters:
                                #3 LSTM
 
             #Task Params
-            self.depth_train = 3
+            self.depth_train = 5
             self.depth_test = self.depth_train
             self.num_train_examples = 10
             self.num_test_examples = 100
-            self.corridors = [10, 20]
+            self.corridors = [3, 3]
 
             self.is_dynamic = False  # Makes the task depth dynamic
             self.dynamic_limit = 50
@@ -125,11 +126,41 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
             self.load('bprop_bsc')
         else: #Run Backprop
             self.run_bprop(self.pop[0])
+
+            #Test fitness
+            test_x, test_y = self.test_sequence_data(1000, self.parameters.depth_train)
+            reward = self.bprop_simulation(self.pop[0], test_x, test_y, parameters.reward_scheme)
+            print 'BPROP results:', reward
+            sys.exit()
+
+
+
+
+
             self.pop[0].to_fast_net()
 
         #Turn off grad for evolution
         for net in self.pop:
             net.turn_grad_off()
+
+
+
+
+    def bprop_simulation(self, individual, data_x, data_y, reward_scheme):
+        reward = 0.0
+
+        for example_x, example_y in zip(data_x, data_y):  # For each examples
+            out = []
+            individual.reset(1)  # Reset memory and recurrent out for the model
+            for item in example_x:  # For all temporal items in input
+
+                net_out = individual.forward(np.array([item]))
+                out.append(net_out.cpu().data[0][0])
+
+            reward += self.get_reward(example_y, out, reward_scheme=1)
+
+
+        return reward/len(data_x)
 
 
 
@@ -145,36 +176,48 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
     def run_bprop(self, model):
         if self.parameters.skip_bprop: return
-        criterion = torch.nn.L1Loss()
+        criterion = torch.nn.L1Loss(False)
+        #criterion = torch.nn.KLDivLoss()
         #criterion = torch.nn.MSELoss()
         #criterion = torch.nn.BCELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+        #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum = 0.1, nesterov = True)
 
-        train_x, train_y = self.test_sequence_data(self.parameters.bprop_train_examples, self.parameters.depth_train)
+        all_train_x, all_train_y = self.test_sequence_data(self.parameters.bprop_train_examples, self.parameters.depth_train)
+        test_x = all_train_x[:]; test_y = all_train_y[:]
+        seq_len = len(all_train_x[0])
         model.cuda()
-        for epoch in range(1, self.parameters.bprop_max_gens):
+        for epoch in range(1, self.parameters.bprop_max_gens+1):
+
+            #Shuffle lists
+            combined = list(zip(all_train_x, all_train_y))
+            random.shuffle(combined)
+            all_train_x[:], all_train_y[:] = zip(*combined)
+
+
             epoch_loss = 0.0
 
-            for example_x, example_y in zip(train_x, train_y):  # For each examples
-                relevant_out = []
-                model.reset() #Reset memory and recurrent out for the model
-                for item in example_x: #For all temporal items in input
-                    net_out = model.forward([item])
-                    if item != 0: #Positions of signal introduction
-                        relevant_out.append(net_out)
+            for batch_id in range(int(self.parameters.bprop_train_examples/self.parameters.batch_size)): #Each batch
+                start_ind = self.parameters.batch_size * batch_id; end_ind = start_ind + self.parameters.batch_size
+                train_x = np.array(all_train_x[start_ind:end_ind])
+                train_y = np.array(all_train_y[start_ind:end_ind])
 
-                # Compare with target and compute loss
-                for net_pred, target in zip(relevant_out, example_y):
-                    target_T = Variable(torch.Tensor([target]).cuda())
-                    target_T = target_T.unsqueeze(0)
-                    loss = criterion(net_pred, target_T)
-                    #loss = (net_pred - target_T) * 1000 + 100
-                    loss.backward(retain_variables=True)
-                    epoch_loss += loss.cpu().data.numpy()[0]
-                optimizer.step() #Perform the gradient updates to weights for the entire set of collected gradients
-                optimizer.zero_grad()
+                model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
+                for i in range(seq_len):  # For the length of the sequence
+                    net_out = model.forward(train_x[:,i])
+                    if train_y[0,i] != 0: #If relevant
+                        target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
+                        loss = criterion(net_out, target_T)
+                        loss.backward(retain_variables=True)
+                        epoch_loss += loss.cpu().data.numpy()[0]
 
+            optimizer.step() #Perform the gradient updates to weights for the entire set of collected gradients
+            optimizer.zero_grad()
             print 'Epoch: ', epoch, ' Loss: ', epoch_loss / len(train_x)
+
+
+        reward = self.bprop_simulation(model, test_x[0:100], test_y[0:100], self.parameters.reward_scheme)
+        print reward
 
 
 

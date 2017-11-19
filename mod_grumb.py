@@ -334,58 +334,58 @@ class PT_GRUMB(nn.Module):
         self.fast_net = Fast_GRUMB(input_size, memory_size, output_size, output_activation)
 
         #Input gate
-        self.w_inpgate = Parameter(torch.rand(input_size, memory_size), requires_grad=1)
-        self.w_rec_inpgate = Parameter(torch.rand(output_size, memory_size), requires_grad=1)
+        self.w_inpgate = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
+        self.w_rec_inpgate = Parameter(torch.rand( memory_size, output_size), requires_grad=1)
         self.w_mem_inpgate = Parameter(torch.rand(memory_size, memory_size), requires_grad=1)
 
         #Block Input
-        self.w_inp = Parameter(torch.rand(input_size, memory_size), requires_grad=1)
-        self.w_rec_inp = Parameter(torch.rand(output_size, memory_size), requires_grad=1)
+        self.w_inp = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
+        self.w_rec_inp = Parameter(torch.rand(memory_size, output_size), requires_grad=1)
 
         #Read Gate
-        self.w_readgate = Parameter(torch.rand(input_size, memory_size), requires_grad=1)
-        self.w_rec_readgate = Parameter(torch.rand(output_size, memory_size), requires_grad=1)
+        self.w_readgate = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
+        self.w_rec_readgate = Parameter(torch.rand(memory_size, output_size), requires_grad=1)
         self.w_mem_readgate = Parameter(torch.rand(memory_size, memory_size), requires_grad=1)
 
         #Write Gate
-        self.w_writegate = Parameter(torch.rand(input_size, memory_size), requires_grad=1)
-        self.w_rec_writegate = Parameter(torch.rand(output_size, memory_size), requires_grad=1)
+        self.w_writegate = Parameter(torch.rand(memory_size, input_size), requires_grad=1)
+        self.w_rec_writegate = Parameter(torch.rand(memory_size, output_size), requires_grad=1)
         self.w_mem_writegate = Parameter(torch.rand(memory_size, memory_size), requires_grad=1)
 
         #Output weights
-        self.w_hid_out = Parameter(torch.rand(memory_size, output_size), requires_grad=1)
+        self.w_hid_out = Parameter(torch.rand(output_size, memory_size), requires_grad=1)
 
         #Biases
-        self.w_input_gate_bias = Parameter(torch.zeros(1, memory_size), requires_grad=1)
-        self.w_block_input_bias = Parameter(torch.zeros(1, memory_size), requires_grad=1)
-        self.w_readgate_bias = Parameter(torch.zeros(1, memory_size), requires_grad=1)
-        self.w_writegate_bias = Parameter(torch.zeros(1, memory_size), requires_grad=1)
+        self.w_input_gate_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
+        self.w_block_input_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
+        self.w_readgate_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
+        self.w_writegate_bias = Parameter(torch.zeros(memory_size, 1), requires_grad=1)
 
         # Adaptive components
-        self.mem = Variable(torch.zeros(1, self.memory_size), requires_grad=1).cuda()
-        self.out = Variable(torch.zeros(1, self.output_size), requires_grad=1).cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, 1), requires_grad=1).cuda()
+        self.out = Variable(torch.zeros(self.output_size, 1), requires_grad=1).cuda()
 
-    def reset(self):
+    def reset(self, batch_size):
         # Adaptive components
-        self.mem = Variable(torch.zeros(1, self.memory_size), requires_grad=1).cuda()
-        self.out = Variable(torch.zeros(1, self.output_size), requires_grad=1).cuda()
+        self.mem = Variable(torch.zeros(self.memory_size, batch_size), requires_grad=1).cuda()
+        self.out = Variable(torch.zeros(self.output_size, batch_size), requires_grad=1).cuda()
 
     # Some bias
     def graph_compute(self, input, rec_output, mem):
         # Compute hidden activation
-        block_inp = F.sigmoid(input.mm(self.w_inp) + rec_output.mm(self.w_rec_inp) + self.w_block_input_bias)
-        inp_gate = F.sigmoid(input.mm(self.w_inpgate) + mem.mm(self.w_mem_inpgate) + rec_output.mm(
-            self.w_rec_inpgate) + self.w_input_gate_bias)
+        block_inp = F.sigmoid(self.w_inp.mm(input) + self.w_rec_inp.mm(rec_output))# + self.w_block_input_bias)
+        inp_gate = F.sigmoid(self.w_inpgate.mm(input) + self.w_mem_inpgate.mm(mem) + self.w_rec_inpgate.mm(
+            rec_output))# + self.w_input_gate_bias)
         inp_out = block_inp * inp_gate
 
-        mem_out = F.sigmoid(input.mm(self.w_readgate) + rec_output.mm(self.w_rec_readgate) + mem.mm(self.w_mem_readgate) + self.w_readgate_bias) * mem
+        mem_out = F.sigmoid(self.w_readgate.mm(input) + self.w_rec_readgate.mm(rec_output) + self.w_mem_readgate.mm(mem))# + self.w_readgate_bias) * mem
 
         hidden_act = mem_out + inp_out
 
-        write_gate_out = F.sigmoid(input.mm(self.w_writegate) + mem.mm(self.w_mem_writegate) + rec_output.mm(self.w_rec_writegate) + self.w_writegate_bias)
+        write_gate_out = F.sigmoid(self.w_writegate.mm(input) + self.w_mem_writegate.mm(mem) + self.w_rec_writegate.mm(rec_output))# + self.w_writegate_bias)
         mem = mem + write_gate_out * F.tanh(hidden_act)
 
-        output = hidden_act.mm(self.w_hid_out)
+        output = self.w_hid_out.mm(hidden_act)
         if self.output_activation != None: output = self.output_activation(output)
 
         return output, mem
@@ -412,6 +412,7 @@ class PT_GRUMB(nn.Module):
             param.volatile = True
 
     def to_fast_net(self):
+        self.reset(1)
         keys = self.state_dict().keys()  # Get all keys
         params = self.state_dict()  # Self params
         fast_net_params = self.fast_net.param_dict  # Fast Net params
