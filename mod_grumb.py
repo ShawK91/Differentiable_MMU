@@ -110,8 +110,8 @@ class PT_GRUMB(nn.Module):
 
 
     def forward(self, input):
-        x = Variable(torch.Tensor(input).cuda(), requires_grad=True); x = x.unsqueeze(0)
-        self.out, self.mem = self.graph_compute(x, self.out, self.mem)
+        #x = Variable(input, requires_grad=True); x = x.unsqueeze(0)
+        self.out, self.mem = self.graph_compute(input, self.out, self.mem)
         return self.out
 
     def turn_grad_on(self):

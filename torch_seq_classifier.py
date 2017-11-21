@@ -4,6 +4,7 @@ from random import randint
 from torch.autograd import Variable
 import torch
 import random
+from torch.utils import data as util
 
 
 
@@ -39,8 +40,8 @@ class Parameters:
     def __init__(self):
             #BackProp
             self.total_epochs= 10000
-            self.batch_size = 100
-            self.train_size = 1000
+            self.batch_size = 10
+            self.train_size = 100
             #Determine the nerual archiecture
             self.arch_type = 2 #1 FEEDFORWARD
                                #2 GRU-MB
@@ -48,13 +49,13 @@ class Parameters:
 
 
             #Task Params
-            self.depth_train = 10
-            self.corridors = [0, 1]
+            self.depth_train = 5
+            self.corridors = [0, 0]
             self.output_activation = 'sigmoid'
 
             #Auto
             self.num_input = 1
-            self.num_hidden = 2
+            self.num_hidden = 5
             self.num_output = 1
             self.num_memory = self.num_hidden
             if self.arch_type == 1: self.arch_type = 'FF'
@@ -99,46 +100,45 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         #optimizer = torch.optim.RMSprop(model.parameters(), lr = 0.005, momentum=0.1)
 
 
+        #Data process
         self.pad_data(all_train_x, all_train_y)
+        eval_train_y = all_train_y[:] #Copy just the list to evaluate batch
+        all_train_x = torch.Tensor(all_train_x).cuda(); all_train_y = torch.Tensor(all_train_y).cuda()
+        eval_train_x = all_train_x[:]  #Copy tensor to evaluate batch
+        train_dataset = util.TensorDataset(all_train_x, all_train_y)
+        train_loader = util.DataLoader(train_dataset, batch_size=self.parameters.batch_size, shuffle=True)
+
         seq_len = len(all_train_x[0])
         self.model.cuda()
-
         for epoch in range(1, self.parameters.total_epochs+1):
 
-            #Shuffle lists
-            combined = list(zip(all_train_x, all_train_y))
-            random.shuffle(combined)
-            all_train_x[:], all_train_y[:] = zip(*combined)
-
-
             epoch_loss = 0.0
-            for batch_id in range(int(self.parameters.train_size/self.parameters.batch_size)): #Each batch
-                start_ind = self.parameters.batch_size * batch_id; end_ind = start_ind + self.parameters.batch_size
-                train_x = np.array(all_train_x[start_ind:end_ind])
-                train_y = np.array(all_train_y[start_ind:end_ind])
-
+            for data in train_loader: #Each Batch
+                net_inputs, targets = data
                 self.model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
-                    net_out = self.model.forward(train_x[:,i])
-                    target_T = Variable(torch.Tensor(train_y[:,i]).cuda()); target_T = target_T.unsqueeze(0)
+                    net_inp = Variable(net_inputs[:,i], requires_grad=True).unsqueeze(0)
+                    net_out = self.model.forward(net_inp)
+                    target_T = Variable(targets[:,i]).unsqueeze(0)
                     loss = criterion(net_out, target_T)
                     loss.backward(retain_variables=True)
                     epoch_loss += loss.cpu().data.numpy()[0]
 
-            optimizer.step() #Perform the gradient updates to weights for the entire set of collected gradients
+            optimizer.step()  # Perform the gradient updates to weights for the entire set of collected gradients
             optimizer.zero_grad()
-
 
             if epoch % 10 == 0:
                 test_x, test_y = self.generate_task_seq(50, parameters.depth_train)
                 self.pad_data(test_x, test_y)
-                epoch_loss /= epoch_loss / len(train_x);
-                train_fitness = self.batch_evaluate(self.model, all_train_x[0:100], all_train_y[0:100])
+                test_x = torch.Tensor(test_x).cuda()
+                train_fitness = self.batch_evaluate(self.model, eval_train_x, eval_train_y)
                 valid_fitness = self.batch_evaluate(self.model, test_x, test_y)
-                print 'Epoch: ', epoch, ' Loss: ', "%0.2f" % epoch_loss,
+                print 'Epoch: ', epoch, ' Loss: ',  epoch_loss,
                 print ' Train_Performance:', "%0.2f" % train_fitness,
                 print ' Valid_Performance:', "%0.2f" % valid_fitness
                 tracker.update([epoch_loss, train_fitness, valid_fitness], epoch)
+
+
 
     def batch_evaluate(self, model, test_x, test_y):
         seq_len = len(test_x[0])
@@ -146,13 +146,12 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         test_failure = np.zeros((1, len(test_x))).astype('bool') #Track failure of test
 
         for i in range(seq_len):  # For the length of the sequence
-            net_inp = np.array(test_x)[:, i]
+            net_inp = Variable(test_x[:,i], requires_grad=True).unsqueeze(0)
             net_out = model.forward(net_inp).cpu().data.numpy()
-            net_inp = np.reshape(net_inp, (1, len(test_x)))
             target = np.reshape(np.array(test_y)[:, i], (1, len(test_x)))
-            #target = Variable(torch.Tensor(np.array(test_y)[:, i]).cuda()); target = target.unsqueeze(0)
 
-            is_relevant = (net_inp == 1) + (net_inp == -1) #
+            inp = test_x[:, i].unsqueeze(0).cpu().numpy()
+            is_relevant = (inp == 1) + (inp == -1) #
             net_out_bool = (net_out >= 0.5)
             is_incorrect = np.logical_xor(net_out_bool, target)
 
