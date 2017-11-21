@@ -4,6 +4,7 @@ from random import randint
 from torch.autograd import Variable
 import torch
 import random
+from numpy import ma
 
 
 class Tracker(): #Tracker
@@ -56,9 +57,9 @@ class SSNE_param:
 class Parameters:
     def __init__(self):
             #BackProp
-            self.bprop_max_gens = 500
-            self.batch_size = 50000
-            self.bprop_train_examples = 50000
+            self.bprop_max_gens = 10000
+            self.batch_size = 100
+            self.bprop_train_examples = 1000
             self.skip_bprop = False
             self.load_seed = False #Loads a seed population from the save_foldername
                                    # IF FALSE: Runs Backpropagation, saves it and uses that
@@ -74,7 +75,7 @@ class Parameters:
                                #3 LSTM
 
             #Task Params
-            self.depth_train = 6
+            self.depth_train = 5
             self.depth_test = self.depth_train
             self.num_train_examples = 10
             self.num_test_examples = 100
@@ -85,7 +86,7 @@ class Parameters:
 
 
             #Network params
-            self.output_activation = 'tanh'
+            self.output_activation = 'sigmoid'
             if self.arch_type == 1: self.arch_type = 'FF'
             elif self.arch_type ==2: self.arch_type = 'GRUMB'
             elif self.arch_type == 3: self.arch_type = 'LSTM'
@@ -129,7 +130,9 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
             #Test fitness
             test_x, test_y = self.test_sequence_data(1000, self.parameters.depth_train)
-            reward = self.bprop_simulation(self.pop[0], test_x, test_y, parameters.reward_scheme)
+            #reward = self.bprop_simulation(self.pop[0], test_x, test_y, parameters.reward_scheme)
+            reward = self.bach_test_eval(self.pop[0], test_x, test_y)
+
             print 'BPROP results:', reward
             sys.exit()
 
@@ -144,21 +147,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
             net.turn_grad_off()
 
 
-    def bprop_simulation(self, individual, data_x, data_y, reward_scheme):
-        reward = 0.0
 
-        for example_x, example_y in zip(data_x, data_y):  # For each examples
-            out = []
-            individual.reset(1)  # Reset memory and recurrent out for the model
-            for item in example_x:  # For all temporal items in input
-
-                net_out = individual.forward(np.array([item]))
-                out.append(net_out.cpu().data[0][0])
-
-            reward += self.get_reward(example_y, out, reward_scheme=1)
-
-
-        return reward/len(data_x)
 
 
 
@@ -174,12 +163,15 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
     def run_bprop(self, model):
         if self.parameters.skip_bprop: return
-        criterion = torch.nn.L1Loss(False)
+        #criterion = torch.nn.L1Loss(False)
+        criterion = torch.nn.SmoothL1Loss(False)
         #criterion = torch.nn.KLDivLoss()
         #criterion = torch.nn.MSELoss()
         #criterion = torch.nn.BCELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum = 0.1, nesterov = True)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=0.1)
+        #optimizer = torch.optim.Adagrad(model.parameters(), lr=0.01)
+        #optimizer = torch.optim.SGD(model.parameters(), lr=0.005, momentum = 0.5, nesterov = True)
+        #optimizer = torch.optim.RMSprop(model.parameters(), lr = 0.005, momentum=0.1)
 
         all_train_x, all_train_y = self.test_sequence_data(self.parameters.bprop_train_examples, self.parameters.depth_train)
 
@@ -219,15 +211,70 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
             optimizer.step() #Perform the gradient updates to weights for the entire set of collected gradients
             optimizer.zero_grad()
-            print 'Epoch: ', epoch, ' Loss: ', epoch_loss / len(train_x)
 
 
-        reward = self.bprop_simulation(model, test_x[0:100], test_y[0:100], self.parameters.reward_scheme)
-        print reward
+            if epoch % 20 == 0:
+                print 'Epoch: ', epoch, ' Loss: ', epoch_loss / len(train_x),
+                print ' Test_Performance:', self.bach_test_eval(model, test_x[0:], test_y[0:])
+                #print self.bprop_simulation(model, test_x[0:500], test_y[0:500], self.parameters.reward_scheme)
+
+
+        #print self.bprop_simulation(model, test_x[0:100], test_y[0:100], self.parameters.reward_scheme)
+
 
 
 
         #self.save(model, self.save_foldername + 'bprop_simulator') #Save individual
+
+
+
+    def bach_test_eval(self, model, test_x, test_y):
+        seq_len = len(test_x[0])
+        model.reset(len(test_x))  # Reset memory and recurrent out for the model
+        test_failure = np.zeros((1, len(test_x))).astype('bool') #Track failure of test
+
+        for i in range(seq_len):  # For the length of the sequence
+            net_inp = np.array(test_x)[:, i]
+            net_out = model.forward(net_inp).cpu().data.numpy()
+            net_inp = np.reshape(net_inp, (1, len(test_x)))
+            target = np.reshape(np.array(test_y)[:, i], (1, len(test_x)))
+            #target = Variable(torch.Tensor(np.array(test_y)[:, i]).cuda()); target = target.unsqueeze(0)
+
+            is_relevant = (net_inp == 1) + (net_inp == -1) #
+            net_out_bool = (net_out >= 0.5)
+            is_incorrect = np.logical_xor(net_out_bool, target)
+
+            test_failure = (test_failure + (is_relevant * is_incorrect))
+
+        test_failure = (test_failure > 0)
+        return (1.0 - np.sum(test_failure)/float(len(test_x)))
+
+
+
+
+            #is_failure =
+
+    def bprop_simulation(self, individual, data_x, data_y, reward_scheme):
+        reward = 0.0
+
+        for example_x, example_y in zip(data_x, data_y):  # For each examples
+            relevant_target = []; relevant_pred = []
+            individual.reset(1)  # Reset memory and recurrent out for the model
+            for item, target in zip(example_x, example_y):  # For all temporal items in input
+
+                net_out = individual.forward(np.array([item]))
+                if item != 0:
+                    relevant_pred.append(net_out.cpu().data[0][0])
+                    relevant_target.append(target)
+
+            reward += self.get_reward(relevant_target, relevant_pred, reward_scheme=1)
+
+
+        return reward/len(data_x)
+
+
+
+
 
     def compute_fitness(self, individual, data_x, data_y, reward_scheme):
         reward = 0.0
@@ -256,11 +303,9 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         if reward_scheme == 1:  #Test
             reward = 1.0
             for y, pred in zip(target, prediction):
-                if y != 0:
-                    point_reward = y * pred
-                    if point_reward < 0 or pred == 0:
-                        reward = 0.0
-                        break
+                if y == 0 and pred >= 0.5 or y == 1 and pred < 0.5 :
+                    reward = 0.0
+                    break
 
         if reward_scheme == 2:  #Coarse
             error = 0.0
@@ -324,7 +369,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 if random.random() < 0.5: x.append(-1)
                 else: x.append(1)
                 if sum(x) >= 0: y.append(1)
-                else: y.append(-1)
+                else: y.append(0)
                 if i == depth - 1: continue
 
                 #Encdoe the noise (0's)
