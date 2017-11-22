@@ -40,8 +40,8 @@ class Parameters:
     def __init__(self):
             #BackProp
             self.total_epochs= 1000
-            self.batch_size = 100
-            self.train_size = 1000
+            self.batch_size = 1000
+            self.train_size = 10000
             #Determine the nerual archiecture
             self.arch_type = 2 #1 FEEDFORWARD
                                #2 GRU-MB
@@ -49,7 +49,7 @@ class Parameters:
 
 
             #Task Params
-            self.depth_train = 4
+            self.depth_train = 2
             self.corridors = [10, 20]
             self.output_activation = 'sigmoid'
 
@@ -62,9 +62,9 @@ class Parameters:
             elif self.arch_type ==2: self.arch_type = 'GRUMB'
             elif self.arch_type == 3: self.arch_type = 'LSTM'
             else: sys.exit('Invalid choice of neural architecture')
-            self.save_foldername = 'Seq_Classifier/'
+            self.save_foldername = 'Seq_Recall/'
 
-class Task_Seq_Classifier: #Bindary Sequence Classifier
+class Task_Seq_Recall: #Sequence Recall
     def __init__(self, parameters):
         self.parameters = parameters
         self.save_foldername = self.parameters.save_foldername
@@ -80,6 +80,9 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
 
 
+    def save(self, individual, filename ):
+        torch.save(individual, filename)
+        #return individual.saver.save(individual.sess, self.save_foldername + filename)
 
     def load(self, filename):
         return torch.load(self.save_foldername + filename)
@@ -134,10 +137,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 print ' Train_Performance:', "%0.2f" % train_fitness,
                 print ' Valid_Performance:', "%0.2f" % valid_fitness
                 tracker.update([epoch_loss, train_fitness, valid_fitness], epoch)
-                torch.save(self.model, self.save_foldername + 'seq_classifier_net')
-
-
-
+                torch.save(self.model, self.save_foldername +  'seq_recall_net')
 
     def batch_evaluate(self, model, test_x, test_y):
         seq_len = len(test_x[0])
@@ -150,7 +150,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
             target = np.reshape(np.array(test_y)[:, i], (1, len(test_x)))
 
             inp = test_x[:, i].unsqueeze(0).cpu().numpy()
-            is_relevant = (inp == 1) + (inp == -1) #
+            is_relevant = (inp == 0) #
             net_out_bool = (net_out >= 0.5)
             is_incorrect = np.logical_xor(net_out_bool, target)
 
@@ -168,21 +168,20 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
         train_x = []; train_y = []
         for example in range(num_examples):
             x = []; y = []
+            # Directions (real signal at the beginning)
             for i in range(depth):
-                #Encode the signal (1 or -1s)
                 if random.random() < 0.5: x.append(-1)
                 else: x.append(1)
-                if sum(x) >= 0: y.append(1)
-                else: y.append(0)
-                if i == depth - 1: continue
+                y.append(0.5)
 
-                #Encdoe the noise (0's)
-                num_noise = randint(self.parameters.corridors[0], self.parameters.corridors[1])
-                for i in range(num_noise):
-                    x.append(0); y.append(y[-1])
-            train_x.append(x); train_y.append(y)
+            # Distraction/Hallway parts
+            for depth_id in range(depth):
+                num_distractions = randint(self.parameters.corridors[0], self.parameters.corridors[1])
+                x = x + [num_distractions-i-1 for i in range(num_distractions)]
+                y = y + [0 if x[depth_id] == -1 else x[depth_id] for _ in range(num_distractions)]
+            train_x.append(x);train_y.append(y)
+
         return train_x, train_y
-
 
     def pad_data(self, all_train_x, all_train_y):
         #Pad train_data
@@ -196,9 +195,9 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
 if __name__ == "__main__":
     parameters = Parameters()  # Create the Parameters class
-    tracker = Tracker(parameters, ['epoch_loss', 'train', 'test'], '_seq_classifier.csv')
+    tracker = Tracker(parameters, ['epoch_loss', 'train', 'test'], 'seq_recall.csv')
     print 'Running Backprop ', parameters.arch_type
-    sim_task = Task_Seq_Classifier(parameters)
+    sim_task = Task_Seq_Recall(parameters)
 
     #Run Back_prop
     train_x, train_y = sim_task.generate_task_seq(parameters.train_size, parameters.depth_train)
