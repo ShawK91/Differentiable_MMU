@@ -49,13 +49,13 @@ class Parameters:
 
 
             #Task Params
-            self.depth_train = 2
+            self.depth_train = 1
             self.corridors = [10, 20]
             self.output_activation = 'sigmoid'
 
             #Auto
-            self.num_input = 1
-            self.num_hidden = 5
+            self.num_input = 2
+            self.num_hidden = 20
             self.num_output = 1
             self.num_memory = self.num_hidden
             if self.arch_type == 1: self.arch_type = 'FF'
@@ -103,7 +103,7 @@ class Task_Seq_Recall: #Sequence Recall
         #Data process
         self.pad_data(all_train_x, all_train_y)
         eval_train_y = all_train_y[:] #Copy just the list to evaluate batch
-        all_train_x = torch.Tensor(all_train_x).cuda(); all_train_y = torch.Tensor(all_train_y).cuda()
+        all_train_x = torch.Tensor(np.array(all_train_x)).cuda(); all_train_y = torch.Tensor(all_train_y).cuda()
         eval_train_x = all_train_x[:]  #Copy tensor to evaluate batch
         train_dataset = util.TensorDataset(all_train_x, all_train_y)
         train_loader = util.DataLoader(train_dataset, batch_size=self.parameters.batch_size, shuffle=True)
@@ -117,7 +117,7 @@ class Task_Seq_Recall: #Sequence Recall
                 net_inputs, targets = data
                 self.model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
-                    net_inp = Variable(net_inputs[:,i], requires_grad=True).unsqueeze(0)
+                    net_inp = Variable(torch.t(net_inputs[:,i,:]), requires_grad=True)
                     net_out = self.model.forward(net_inp)
                     target_T = Variable(targets[:,i]).unsqueeze(0)
                     loss = criterion(net_out, target_T)
@@ -145,11 +145,11 @@ class Task_Seq_Recall: #Sequence Recall
         test_failure = np.zeros((1, len(test_x))).astype('bool') #Track failure of test
 
         for i in range(seq_len):  # For the length of the sequence
-            net_inp = Variable(test_x[:,i], requires_grad=True).unsqueeze(0)
+            net_inp = Variable(torch.t(test_x[:,i,:]), requires_grad=True)
             net_out = model.forward(net_inp).cpu().data.numpy()
             target = np.reshape(np.array(test_y)[:, i], (1, len(test_x)))
 
-            inp = test_x[:, i].unsqueeze(0).cpu().numpy()
+            inp = test_x[:, i, 0].unsqueeze(0).cpu().numpy()
             is_relevant = (inp == 0) #
             net_out_bool = (net_out >= 0.5)
             is_incorrect = np.logical_xor(net_out_bool, target)
@@ -170,15 +170,15 @@ class Task_Seq_Recall: #Sequence Recall
             x = []; y = []
             # Directions (real signal at the beginning)
             for i in range(depth):
-                if random.random() < 0.5: x.append(-1)
-                else: x.append(1)
+                if random.random() < 0.5: x.append([-1, 1])
+                else: x.append([1,1])
                 y.append(0.5)
 
             # Distraction/Hallway parts
             for depth_id in range(depth):
                 num_distractions = randint(self.parameters.corridors[0], self.parameters.corridors[1])
-                x = x + [num_distractions-i-1 for i in range(num_distractions)]
-                y = y + [0 if x[depth_id] == -1 else x[depth_id] for _ in range(num_distractions)]
+                x = x + [[num_distractions-i-1, 0] for i in range(num_distractions)]
+                y = y + [0 if x[depth_id][0] == -1 else x[depth_id][0] for _ in range(num_distractions)]
             train_x.append(x);train_y.append(y)
 
         return train_x, train_y
@@ -189,7 +189,7 @@ class Task_Seq_Recall: #Sequence Recall
         max_len = max(all_len)
         for i in range(len(all_train_x)):
             while len(all_train_x[i]) < max_len:
-                all_train_x[i].append(0)
+                all_train_x[i].append([0,0])
                 all_train_y[i].append(all_train_y[i][-1])
 
 
