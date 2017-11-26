@@ -21,7 +21,7 @@ class Tracker(): #Tracker
             var[0].append(update)
 
         #Constrain size of convolution
-        if len(self.all_tracker[0][0]) > 100: #Assume all variable are updated uniformly
+        if len(self.all_tracker[0][0]) > 10: #Assume all variable are updated uniformly
             for var in self.all_tracker:
                 var[0].pop(0)
 
@@ -49,7 +49,7 @@ class Parameters:
 
 
             #Task Params
-            self.depth_train = 4
+            self.depth_train = 2
             self.corridors = [10, 20]
             self.output_activation = 'sigmoid'
 
@@ -99,13 +99,23 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
         #Data process
         self.pad_data(all_train_x, all_train_y)
+        seq_len = len(all_train_x[0])
+
+        #Is relevant markers to reduce backprop
+        relevance_mat = []
+        for i in range(seq_len):
+            inp = np.array(all_train_x)[:, i]
+            is_relevant = (inp == 1) + (inp == -1)
+            if is_relevant.any(): relevance_mat.append(True)
+            else: relevance_mat.append(False)
+
+
         eval_train_y = all_train_y[:] #Copy just the list to evaluate batch
         all_train_x = torch.Tensor(all_train_x).cuda(); all_train_y = torch.Tensor(all_train_y).cuda()
         eval_train_x = all_train_x[:]  #Copy tensor to evaluate batch
         train_dataset = util.TensorDataset(all_train_x, all_train_y)
         train_loader = util.DataLoader(train_dataset, batch_size=self.parameters.batch_size, shuffle=True)
 
-        seq_len = len(all_train_x[0])
         self.model.cuda()
         for epoch in range(1, self.parameters.total_epochs+1):
 
@@ -115,10 +125,11 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
                 self.model.reset(self.parameters.batch_size)  # Reset memory and recurrent out for the model
                 for i in range(seq_len):  # For the length of the sequence
                     net_inp = Variable(net_inputs[:,i], requires_grad=True).unsqueeze(0)
+
                     net_out = self.model.forward(net_inp)
                     target_T = Variable(targets[:,i]).unsqueeze(0)
                     loss = criterion(net_out, target_T)
-                    loss.backward(retain_variables=True)
+                    if relevance_mat[i]: loss.backward(retain_variables=True)
                     epoch_loss += loss.cpu().data.numpy()[0]
 
             optimizer.step()  # Perform the gradient updates to weights for the entire set of collected gradients
@@ -196,7 +207,7 @@ class Task_Seq_Classifier: #Bindary Sequence Classifier
 
 if __name__ == "__main__":
     parameters = Parameters()  # Create the Parameters class
-    tracker = Tracker(parameters, ['epoch_loss', 'train', 'test'], '_seq_classifier.csv')
+    tracker = Tracker(parameters, ['epoch_loss', 'train', 'valid'], '_seq_classifier.csv')
     print 'Running Backprop ', parameters.arch_type
     sim_task = Task_Seq_Classifier(parameters)
 

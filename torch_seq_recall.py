@@ -21,7 +21,7 @@ class Tracker(): #Tracker
             var[0].append(update)
 
         #Constrain size of convolution
-        if len(self.all_tracker[0][0]) > 100: #Assume all variable are updated uniformly
+        if len(self.all_tracker[0][0]) > 10: #Assume all variable are updated uniformly
             for var in self.all_tracker:
                 var[0].pop(0)
 
@@ -195,7 +195,7 @@ class Task_Seq_Recall: #Sequence Recall
 
 if __name__ == "__main__":
     parameters = Parameters()  # Create the Parameters class
-    tracker = Tracker(parameters, ['epoch_loss', 'train', 'test'], 'seq_recall.csv')
+    tracker = Tracker(parameters, ['epoch_loss_', 'train_', 'valid_'], 'seq_recall.csv')
     print 'Running Backprop ', parameters.arch_type
     sim_task = Task_Seq_Recall(parameters)
 
